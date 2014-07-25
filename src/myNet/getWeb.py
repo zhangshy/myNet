@@ -1,4 +1,5 @@
 '''
+使用urllib接口获取网页，将图片保存
 Created on Jul 17, 2014
 
 @author: zsy
@@ -6,6 +7,30 @@ Created on Jul 17, 2014
 import urllib.request
 import time
 import os
+from html.parser import HTMLParser
+
+index = 0
+filePath = "/home/zsy/lqbz/pictures/"
+
+'''
+像jpg、png等都是3个字节，将tag是img，开头为http，倒数第四个字节为'.'的当作图片
+'''
+class MyHTMLParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        global index
+        global filePath
+        if tag=="img":            
+            if attrs[0][0]=="src" or attrs[0][0]=="r_src":
+                url = attrs[0][1]
+                print(url)
+                if (url.startswith("http")):
+                    if url[-4:-3]=='.':
+                        fileNameindex = url.rfind("/")
+                        fileName = url[fileNameindex:]
+                        fileName = filePath + fileName
+                        urllib.request.urlretrieve(url, fileName)
+                        index += 1
+                
 
 ##根据charset=选项确定编码方式
 def getEncodeType(context):
@@ -35,13 +60,22 @@ headers = {'User-agent':'Mozilla/5.0',
            }
 req = urllib.request.Request(url)
 for k, v in headers.items():
-    print(k, v)
+    #print(k, v)
     req.add_header(k, v)
 r = urllib.request.urlopen(req)
 context = r.read()
 decodeType=getEncodeType(context)
 data = context.decode(decodeType)   #使用gbk还是utf-8看具体内容。youku使用decode("UTF-8")
-print(data)
+#print(data)
+global filePath
+localDir = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()) #获取当前时间
+filePath = filePath + localDir;
+if not os.access(filePath, os.R_OK):
+    print("目录不存在")
+    os.mkdir(filePath, mode=0o777)
+
+parser = MyHTMLParser()
+parser.feed(data)
 
 '''
 url="http://d.hiphotos.baidu.com/news/pic/item/c9fcc3cec3fdfc03076fe377d63f8794a5c226ed.jpg"
