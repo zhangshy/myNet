@@ -9,6 +9,10 @@ import time
 import os
 from html.parser import HTMLParser
 import argparse
+import re
+import json
+import random
+
 
 filePath = "/home/zsy/lqbz/pictures/"
 
@@ -64,9 +68,13 @@ def creatOutPath():
 获取url内容
 '''
 def getUrlContext(url):
-    headers = {'User-agent':'Mozilla/5.0',
-               'cache-control':'no-cache',
-               'accept':'*/*'
+    headers = {
+               #'Accept-Encoding': 'gzip',
+               'Accept-Charset': 'ISO-8859-1,utf-8',
+               'accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+               'Connection': "keep-alive",
+               'Accept-Language': 'en-US',
+               'User-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 6_1_2 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10B146 Safari/8536.25'
                }
     req = urllib.request.Request(url)
     for k, v in headers.items():
@@ -77,6 +85,66 @@ def getUrlContext(url):
     decodeType=getEncodeType(context)
     data = context.decode(decodeType)   #使用gbk还是utf-8看具体内容。youku使用decode("UTF-8")
     return data
+
+##获取youku视频链接信息
+def getVideoInfo(url):  
+    ruleTitle=re.compile('<title>(.*)</title>')  
+    ruleId=re.compile('http://v.youku.com/v_show/id_(.*).html')  
+    videoTitle=ruleTitle.findall(urllib.request.urlopen(url).read().decode('utf8'))  
+    videoId=ruleId.findall(url)  
+    return videoTitle[0],videoId[0]
+
+def getTrueLink(videoid):  
+    data=urllib.request.urlopen('http://v.youku.com/player/getPlayList/VideoIDS/'+videoid)  
+    info=json.loads(data.read().decode('utf8'))  
+  
+    segs=info['data'][0]['segs']  
+    types=segs.keys()  
+  
+    seed=info['data'][0]['seed']  
+    source=list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/\\:._-1234567890")  
+    mixed=''  
+    while source:  
+        seed=(seed*211+30031)&0xFFFF  
+        index=seed*len(source)>>16  
+        c=source.pop(index)  
+        mixed+=c  
+  
+    ids=info['data'][0]['streamfileids']['flv'].split('*')[:-1]  
+    vid=''.join(mixed[int(i)] for i in ids)  
+  
+    sid='%s%s%s'%(int(time.time()*1000),random.randint(1000,1999),random.randint(1000,9999))  
+  
+    urls=[]  
+    for s in segs['flv']:  
+        no='%02x'%int(s['no'])  
+        url='http://f.youku.com/player/getFlvPath/sid/%s_%s/st/flv/fileid/%s%s%s?K=%s&ts=%s'%(sid,no,vid[:8],no.upper(),vid[10:],s['k'],s['seconds'])  
+        urls.append(url)  
+    return urls  
+  
+def down2file(urls,filename):  
+    f=open(filename,'wb')  
+    fileNum=len(urls)  
+    count=0  
+    for url in urls:  
+        count+=1  
+        print('downloading file %d/%d'%(count,fileNum))  
+        req=urllib.request.Request(url,headers={'Referer':'http://www.youku.com'})  
+        data=urllib.request.urlopen(req).read()  
+        f.write(data)  
+    f.close()  
+    print('download '+filename+' OK!')
+    
+'''
+参考网络代码：http://blog.csdn.net/littlethunder/article/details/18230859
+'''    
+def youkuDown(link):  
+    videotitle,videoid=getVideoInfo(link)
+    print(videoid, videotitle)  
+    urls=getTrueLink(videoid)  
+    for url in urls:
+        print(url)
+#    down2file(urls,videotitle+'.flv')    ###未成功，暂时不下载。
     
 if __name__=="__main__":  
     url = "http://news.baidu.com/"
@@ -87,12 +155,16 @@ if __name__=="__main__":
     parser.add_argument('-u', '--url', dest="url", help="要访问的网页url")
     parser.add_argument('-o', '--output', dest="filePath", help="文件要保存的路径")
     parser.add_argument('--image', action='store_true', help="使用保存图片操作")
+    parser.add_argument('--youku', action='store_true', help="保存youku视频")
     argRet = parser.parse_args()
     print(argRet)
     #使用命令行中的参数
     url = argRet.url if argRet.url!=None else url   
     filePath = argRet.filePath if argRet.filePath!=None else filePath
     print(url, filePath)
+    
+    if argRet.youku:
+        youkuDown(url)
     
     if argRet.image:
         data = getUrlContext(url)
